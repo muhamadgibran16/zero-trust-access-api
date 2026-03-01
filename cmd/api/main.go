@@ -49,6 +49,9 @@ func main() {
 
 	// Connect to database
 	db := database.Connect(cfg)
+	
+	// Connect to Redis
+	database.ConnectRedis(cfg)
 
 	// Create and run server
 	srv := server.New(cfg, logger, db)

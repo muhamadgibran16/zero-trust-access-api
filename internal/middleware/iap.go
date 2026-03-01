@@ -4,6 +4,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/gibran/go-gin-boilerplate/database"
 	"github.com/gibran/go-gin-boilerplate/pkg/response"
 	"github.com/gibran/go-gin-boilerplate/pkg/security"
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,17 @@ func IdentityAwareProxy(secret string) gin.HandlerFunc {
 			response.Unauthorized(c, "IAP: Invalid or expired identity token")
 			c.Abort()
 			return
+		}
+
+		// Check if token's JTI is in Redis blocklist (Session Revoked)
+		if database.RedisClient != nil && claims.ID != "" {
+			isBlocked, err := database.RedisClient.Exists(c.Request.Context(), "blocklist:"+claims.ID).Result()
+			if err == nil && isBlocked > 0 {
+				log.Printf("[IAP] Blocked revoked session for UserID: %s, IP: %s", claims.UserID, c.ClientIP())
+				response.Unauthorized(c, "IAP: Session has been active revoked by Administrator")
+				c.Abort()
+				return
+			}
 		}
 
 		// Inject user info into context for downstream

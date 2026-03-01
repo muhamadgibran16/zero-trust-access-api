@@ -23,10 +23,19 @@ type Config struct {
 	DBName     string
 	DBSSLMode  string
 
-	// JWT
+	// Redis
+	RedisHost     string
+	RedisPort     string
+	RedisPassword string
+
 	JWTSecret            string
 	JWTAccessExpireHours int
 	JWTRefreshExpireDays int
+
+	// SSO
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURL  string
 }
 
 // Load reads configuration from environment variables
@@ -47,9 +56,17 @@ func Load() *Config {
 		DBName:     getEnv("DB_NAME", "go_gin_boilerplate"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 
+		RedisHost:     getEnv("REDIS_HOST", "localhost"),
+		RedisPort:     getEnv("REDIS_PORT", "6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+
 		JWTSecret:            getEnv("JWT_SECRET", "your-super-secret-key"),
 		JWTAccessExpireHours: getEnvInt("JWT_ACCESS_EXPIRE_HOURS", 1),
 		JWTRefreshExpireDays: getEnvInt("JWT_REFRESH_EXPIRE_DAYS", 7),
+
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
 	}
 }
 
