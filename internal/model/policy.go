@@ -11,6 +11,8 @@ const (
 	PolicyTypeDenyIP   = "DENY_IP"
 	PolicyTypeAllowIP  = "ALLOW_IP"
 	PolicyTypeRequire  = "REQUIRE_ROLE"
+	PolicyTypeTime     = "TIME_RESTRICT"
+	PolicyTypeGeo      = "GEO_RESTRICT"
 )
 
 // PolicyRule defines dynamic access rules evaluated by the zero trust engine

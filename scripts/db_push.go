@@ -21,6 +21,7 @@ func main() {
 		&model.User{},
 		&model.AuditLog{},
 		&model.PolicyRule{},
+		&model.Device{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)
