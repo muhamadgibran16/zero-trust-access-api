@@ -1,7 +1,11 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 
 	"github.com/gibran/go-gin-boilerplate/config"
 	"github.com/gibran/go-gin-boilerplate/internal/model"
@@ -9,17 +13,27 @@ import (
 	"github.com/gibran/go-gin-boilerplate/pkg/security"
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 // AuthService handles authentication logic
 type AuthService struct {
-	repo   *repository.UserRepository
-	config *config.Config
+	repo         *repository.UserRepository
+	config       *config.Config
+	googleConfig *oauth2.Config
 }
 
 // NewAuthService creates a new AuthService
 func NewAuthService(repo *repository.UserRepository, cfg *config.Config) *AuthService {
-	return &AuthService{repo: repo, config: cfg}
+	gConfig := &oauth2.Config{
+		RedirectURL:  cfg.GoogleRedirectURL,
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"},
+		Endpoint:     google.Endpoint,
+	}
+	return &AuthService{repo: repo, config: cfg, googleConfig: gConfig}
 }
 
 type RegisterRequest struct {
@@ -84,7 +98,19 @@ func (s *AuthService) Login(req LoginRequest) (*AuthResponse, error) {
 
 	// Compare password
 	if !security.ComparePassword(user.Password, req.Password) {
+		// Increment risk score for failed login
+		user.RiskScore += 10
+		_ = s.repo.Update(user)
 		return nil, errors.New("invalid email or password")
+	}
+
+	// Reset risk score upon successful login (optional, but good practice to lower risk on success, or keep it static? Let's just track it up for now and let admins reset it manually or reset on success. For this demo we'll reduce it by 5 on success to prevent accidental lockouts)
+	if user.RiskScore > 0 {
+		user.RiskScore -= 5
+		if user.RiskScore < 0 {
+			user.RiskScore = 0
+		}
+		_ = s.repo.Update(user)
 	}
 
 	// Adaptive Auth: If MFA is not enabled, log them in immediately so they can set it up
@@ -115,11 +141,15 @@ func (s *AuthService) VerifyMFA(req MfaVerifyRequest) (*AuthResponse, error) {
 	if user.MFAEnabled && user.MFASecret != "" {
 		valid := totp.Validate(req.MfaCode, user.MFASecret)
 		if !valid {
+			user.RiskScore += 20 // MFA failure is higher risk
+			_ = s.repo.Update(user)
 			return nil, errors.New("invalid MFA code")
 		}
 	} else {
 		// Fallback for users who haven't set up MFA yet in phase 2 testing
 		if req.MfaCode != "123456" {
+			user.RiskScore += 10
+			_ = s.repo.Update(user)
 			return nil, errors.New("invalid MFA code")
 		}
 	}
@@ -143,16 +173,55 @@ func (s *AuthService) VerifyMFA(req MfaVerifyRequest) (*AuthResponse, error) {
 	}, nil
 }
 
-// SsoLogin validates an external SSO Provider token
-func (s *AuthService) SsoLogin(req SsoLoginRequest) (*AuthResponse, error) {
-	// In production, verify req.SSOToken with the Provider (Google, Azure AD).
-	// Here we stub the response for an imaginary known SSO user.
-	user, err := s.repo.FindByEmail("admin@zerotrust.local")
+// GetGoogleLoginURL returns the OAuth2 consent page URL
+func (s *AuthService) GetGoogleLoginURL(state string) string {
+	return s.googleConfig.AuthCodeURL(state)
+}
+
+// GoogleCallback processes the code and logs the user in
+func (s *AuthService) GoogleCallback(code string) (*AuthResponse, error) {
+	token, err := s.googleConfig.Exchange(context.Background(), code)
 	if err != nil {
-		return nil, errors.New("SSO user not found in local system")
+		return nil, fmt.Errorf("code exchange failed: %s", err.Error())
 	}
 
-	// SSO assumes identity validated by IdP, skip passwords/MFA for demonstration
+	response, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting user info: %s", err.Error())
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Google API returned status: %d", response.StatusCode)
+	}
+
+	var userInfo struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+		Id    string `json:"id"`
+	}
+
+	if err := json.NewDecoder(response.Body).Decode(&userInfo); err != nil {
+		return nil, fmt.Errorf("failed parsing user info: %v", err)
+	}
+
+	// Find user or create if they don't exist
+	user, err := s.repo.FindByEmail(userInfo.Email)
+	if err != nil {
+		// Auto-register via SSO
+		user = &model.User{
+			Name:       userInfo.Name,
+			Email:      userInfo.Email,
+			Password:   "", // No password for SSO users
+			Role:       "user",
+			MFAEnabled: false,
+		}
+		if err := s.repo.Create(user); err != nil {
+			return nil, err
+		}
+	}
+
+	// SSO assumes identity validated by IdP, skip passwords/MFA for demonstration (or enforce MFA if required)
 	accessToken, err := security.GenerateToken(user.ID, user.Role, s.config.JWTSecret, s.config.JWTAccessExpireHours)
 	if err != nil {
 		return nil, err
@@ -178,8 +247,13 @@ func (s *AuthService) RefreshToken(tokenString string) (string, error) {
 		return "", errors.New("invalid or expired refresh token")
 	}
 
-	// Generate new access token
-	accessToken, err := security.GenerateToken(claims.UserID, claims.Role, s.config.JWTSecret, s.config.JWTAccessExpireHours)
+	user, err := s.repo.FindByID(claims.UserID)
+	if err != nil {
+		return "", errors.New("user not found")
+	}
+
+	// Generate new access token using the latest role from DB
+	accessToken, err := security.GenerateToken(claims.UserID, user.Role, s.config.JWTSecret, s.config.JWTAccessExpireHours)
 	if err != nil {
 		return "", err
 	}

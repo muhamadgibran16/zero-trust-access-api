@@ -13,14 +13,21 @@ import (
 	adminHandler "github.com/gibran/go-gin-boilerplate/internal/handler/admin"
 	authHandler "github.com/gibran/go-gin-boilerplate/internal/handler/auth"
 	healthHandler "github.com/gibran/go-gin-boilerplate/internal/handler/health"
+	policyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/policy"
 	userHandler "github.com/gibran/go-gin-boilerplate/internal/handler/user"
+	deviceHandler "github.com/gibran/go-gin-boilerplate/internal/handler/device"
 	"github.com/gibran/go-gin-boilerplate/internal/middleware"
 	auditRepo "github.com/gibran/go-gin-boilerplate/internal/repository/audit"
+	policyRepo "github.com/gibran/go-gin-boilerplate/internal/repository/policy"
 	userRepo "github.com/gibran/go-gin-boilerplate/internal/repository/user"
+	deviceRepo "github.com/gibran/go-gin-boilerplate/internal/repository/device"
 	"github.com/gibran/go-gin-boilerplate/internal/routes"
 	adminSvc "github.com/gibran/go-gin-boilerplate/internal/service/audit"
 	authSvc "github.com/gibran/go-gin-boilerplate/internal/service/auth"
+	policySvc "github.com/gibran/go-gin-boilerplate/internal/service/policy"
+	deviceSvc "github.com/gibran/go-gin-boilerplate/internal/service/device"
 	userSvc "github.com/gibran/go-gin-boilerplate/internal/service/user"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -53,16 +60,22 @@ func New(cfg *config.Config, logger *zap.Logger, db *gorm.DB) *Server {
 	// Initialize Layers
 	uRepo := userRepo.NewUserRepository(db)
 	aRepo := auditRepo.NewAuditLogRepository(db)
+	pRepo := policyRepo.NewPolicyRepository(db)
+	dRepo := deviceRepo.NewDeviceRepository(db)
 	
 	aService := authSvc.NewAuthService(uRepo, cfg)
 	uService := userSvc.NewUserService(uRepo)
 	adminService := adminSvc.NewAuditLogService(aRepo)
+	pService := policySvc.NewPolicyService(pRepo)
+	dService := deviceSvc.NewDeviceService(dRepo)
 
 	handlers := &routes.Handlers{
 		Health: healthHandler.NewHandler(),
 		Auth:   authHandler.NewHandler(aService),
 		User:   userHandler.NewHandler(uService),
 		Admin:  adminHandler.NewHandler(adminService),
+		Policy: policyHandler.NewHandler(pService),
+		Device: deviceHandler.NewHandler(dService),
 	}
 
 	// Setup Routes

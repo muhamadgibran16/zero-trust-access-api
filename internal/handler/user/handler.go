@@ -151,3 +151,31 @@ func (h *Handler) Delete(c *gin.Context) {
 
 	response.Success(c, "User deleted successfully", nil)
 }
+
+// Revoke handles POST /users/:id/revoke
+// @Summary Revoke user sessions
+// @Description Instantly force logout a user by blacklisting their sessions in Redis (Admin only)
+// @Tags users
+// @Produce json
+// @Param id path string true "User UUID"
+// @Success 200 {object} response.Response
+// @Failure 401 {object} response.ErrorResponse
+// @Failure 403 {object} response.ErrorResponse
+// @Failure 404 {object} response.ErrorResponse
+// @Security BearerAuth
+// @Router /users/{id}/revoke [post]
+func (h *Handler) Revoke(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID format")
+		return
+	}
+
+	err = h.service.RevokeSessions(id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+
+	response.Success(c, "User sessions successfully revoked", nil)
+}

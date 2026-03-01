@@ -21,6 +21,7 @@ type User struct {
 	Role       string         `gorm:"size:50;not null;default:'user'" json:"role"`
 	MFASecret  string         `gorm:"size:255" json:"-"`
 	MFAEnabled bool           `gorm:"default:false" json:"mfaEnabled"`
+	RiskScore   int            `gorm:"default:0" json:"riskScore"`
 	CreatedAt  time.Time      `json:"createdAt"`
 	UpdatedAt  time.Time      `json:"updatedAt"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`

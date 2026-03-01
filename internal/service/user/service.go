@@ -1,8 +1,11 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"time"
 
+	"github.com/gibran/go-gin-boilerplate/database"
 	"github.com/gibran/go-gin-boilerplate/internal/model"
 	repository "github.com/gibran/go-gin-boilerplate/internal/repository/user"
 	"github.com/google/uuid"
@@ -62,4 +65,19 @@ func (s *UserService) DeleteUser(id uuid.UUID) error {
 		return errors.New("user not found")
 	}
 	return s.repo.Delete(id)
+}
+
+// RevokeSessions explicitly forces a user to log out by blacklisting them in Redis
+func (s *UserService) RevokeSessions(id uuid.UUID) error {
+	_, err := s.repo.FindByID(id)
+	if err != nil {
+		return errors.New("user not found")
+	}
+	
+	if database.RedisClient != nil {
+		// Set a revocation flag spanning max JWT lifetime (e.g. 7 days)
+		return database.RedisClient.Set(context.Background(), "revoke_user:"+id.String(), "true", 7*24*time.Hour).Err()
+	}
+	
+	return errors.New("redis is not configured for session revocation")
 }
