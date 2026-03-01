@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gibran/go-gin-boilerplate/database"
 	"github.com/gibran/go-gin-boilerplate/internal/model"
@@ -49,6 +50,48 @@ func PolicyEngine() gin.HandlerFunc {
 					}
 					if roleStr != policy.Value {
 						response.Forbidden(c, fmt.Sprintf("Policy Engine: Requires %s privileges", policy.Value))
+						c.Abort()
+						return
+					}
+				case model.PolicyTypeTime:
+					// Parse "HH:MM-HH:MM" e.g., "08:00-17:00"
+					parts := strings.Split(policy.Value, "-")
+					if len(parts) == 2 {
+						now := time.Now()
+						currentMin := now.Hour()*60 + now.Minute()
+
+						startParts := strings.Split(parts[0], ":")
+						endParts := strings.Split(parts[1], ":")
+
+						if len(startParts) == 2 && len(endParts) == 2 {
+							var sh, sm, eh, em int
+							fmt.Sscanf(startParts[0], "%d", &sh)
+							fmt.Sscanf(startParts[1], "%d", &sm)
+							fmt.Sscanf(endParts[0], "%d", &eh)
+							fmt.Sscanf(endParts[1], "%d", &em)
+
+							startMin := sh*60 + sm
+							endMin := eh*60 + em
+
+							// If current time is OUTSIDE the allowed window
+							if currentMin < startMin || currentMin > endMin {
+								response.Forbidden(c, fmt.Sprintf("Policy Engine: Access restricted during this time (Allowed: %s)", policy.Value))
+								c.Abort()
+								return
+							}
+						}
+					}
+				case model.PolicyTypeGeo:
+					// Mock GeoIP detection via header for demonstration
+					userCountry := c.GetHeader("X-Mock-Country")
+					if userCountry == "" {
+						userCountry = "UNKNOWN" // Default if not passed
+					}
+					
+					// Rule value could be "ID" (Indonesia), "US", etc.
+					// If the user's country does NOT match the required allowed country, block.
+					if strings.ToUpper(userCountry) != strings.ToUpper(policy.Value) {
+						response.Forbidden(c, fmt.Sprintf("Policy Engine: Access from region %s is blocked by Geographic restrictions", userCountry))
 						c.Abort()
 						return
 					}
