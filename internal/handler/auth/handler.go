@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"net/http"
 
 	service "github.com/gibran/go-gin-boilerplate/internal/service/auth"
 	"github.com/gibran/go-gin-boilerplate/pkg/response"
@@ -97,30 +98,43 @@ func (h *Handler) VerifyMFA(c *gin.Context) {
 	response.Success(c, "MFA Verification successful", res)
 }
 
-// SsoLogin handles POST /auth/sso-login
-// @Summary SSO Login
-// @Description Authenticate via external Provider (Google Workspace, Azure AD, Okta)
+// GoogleLogin handles GET /auth/google
+// @Summary Init Google SSO Pipeline
+// @Description Redirects the user to the Google OAuth2 consent page.
 // @Tags auth
-// @Accept json
+// @Router /auth/google [get]
+func (h *Handler) GoogleLogin(c *gin.Context) {
+	// A simple anti-forgery state token in real life should be a random unguessable string
+	state := "random-state-string"
+	url := h.service.GetGoogleLoginURL(state)
+	c.Redirect(http.StatusTemporaryRedirect, url)
+}
+
+// GoogleCallback handles GET /auth/google/callback
+// @Summary Google SSO Redirection
+// @Description Validates the code from Google and authenticates user.
+// @Tags auth
 // @Produce json
-// @Param request body service.SsoLoginRequest true "SSO Token details"
+// @Param code query string true "OAuth2 authorization code"
 // @Success 200 {object} response.Response{data=service.AuthResponse}
-// @Failure 401 {object} response.ErrorResponse
-// @Router /auth/sso-login [post]
-func (h *Handler) SsoLogin(c *gin.Context) {
-	var req service.SsoLoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.ValidationError(c, err)
+// @Router /auth/google/callback [get]
+func (h *Handler) GoogleCallback(c *gin.Context) {
+	code := c.Query("code")
+	if code == "" {
+		response.BadRequest(c, "Code not found in callback")
 		return
 	}
 
-	res, err := h.service.SsoLogin(req)
+	res, err := h.service.GoogleCallback(code)
 	if err != nil {
-		response.Unauthorized(c, err.Error())
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("http://localhost:3000/auth/callback?error=%s", err.Error()))
 		return
 	}
 
-	response.Success(c, "SSO Login successful", res)
+	// For an API layer, you wouldn't return JSON directly after an OAuth redirect if a frontend web app is attached
+	// Redirect the user to `http://localhost:3000/auth/callback?access_token=abc&refresh_token=xyz`
+	frontendURL := fmt.Sprintf("http://localhost:3000/auth/callback?access_token=%s&refresh_token=%s", res.AccessToken, res.RefreshToken)
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL)
 }
 
 type RefreshRequest struct {
