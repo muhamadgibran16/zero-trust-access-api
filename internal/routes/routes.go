@@ -4,11 +4,16 @@ import (
 	"net/http"
 
 	adminHandler "github.com/gibran/go-gin-boilerplate/internal/handler/admin"
+	analyticsHandler "github.com/gibran/go-gin-boilerplate/internal/handler/analytics"
 	authHandler "github.com/gibran/go-gin-boilerplate/internal/handler/auth"
-	healthHandler "github.com/gibran/go-gin-boilerplate/internal/handler/health"
-	policyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/policy"
-	userHandler "github.com/gibran/go-gin-boilerplate/internal/handler/user"
 	deviceHandler "github.com/gibran/go-gin-boilerplate/internal/handler/device"
+	healthHandler "github.com/gibran/go-gin-boilerplate/internal/handler/health"
+	monitoringHandler "github.com/gibran/go-gin-boilerplate/internal/handler/monitoring"
+	notifHandler "github.com/gibran/go-gin-boilerplate/internal/handler/notification"
+	policyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/policy"
+	profileHandler "github.com/gibran/go-gin-boilerplate/internal/handler/profile"
+	proxyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/proxy"
+	userHandler "github.com/gibran/go-gin-boilerplate/internal/handler/user"
 	"github.com/gibran/go-gin-boilerplate/internal/middleware"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -19,12 +24,17 @@ import (
 )
 
 type Handlers struct {
-	Health *healthHandler.Handler
-	Auth   *authHandler.Handler
-	User   *userHandler.Handler
-	Admin  *adminHandler.Handler
-	Policy *policyHandler.Handler
-	Device *deviceHandler.Handler
+	Health       *healthHandler.Handler
+	Auth         *authHandler.Handler
+	User         *userHandler.Handler
+	Admin        *adminHandler.Handler
+	Policy       *policyHandler.Handler
+	Device       *deviceHandler.Handler
+	Profile      *profileHandler.Handler
+	Notification *notifHandler.Handler
+	Analytics    *analyticsHandler.Handler
+	Monitoring   *monitoringHandler.Handler
+	Proxy        *proxyHandler.Handler
 }
 
 // Setup registers all routes to the Gin engine
@@ -59,24 +69,42 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 			auth.GET("/google", handlers.Auth.GoogleLogin)
 			auth.GET("/google/callback", handlers.Auth.GoogleCallback)
 			auth.POST("/refresh", handlers.Auth.Refresh)
+			auth.POST("/forgot-password", handlers.Auth.ForgotPassword)
+			auth.POST("/reset-password", handlers.Auth.ResetPassword)
 		}
 
 		// Users (Protected ZTA Zone)
 		users := v1.Group("/users")
-		users.Use(middleware.IdentityAwareProxy(jwtSecret)) // Replaces regular Auth middleware for strict identity verification
-		users.Use(middleware.RiskEngine())                    // Continuous authorization: evaluates dynamic risk thresholds	
-		users.Use(middleware.DevicePosture())                 // Ensures device compliance (e.g. valid OS version)
-		users.Use(middleware.AuditLog(logger))                // Audit logging for access control
+		users.Use(middleware.IdentityAwareProxy(jwtSecret))
+		users.Use(middleware.RiskEngine())
+		users.Use(middleware.DevicePosture())
+		users.Use(middleware.AuditLog(logger))
 		
 		{
 			// MFA Setup and Enable
 			users.POST("/setup-mfa", handlers.Auth.SetupMFA)
 			users.POST("/enable-mfa", handlers.Auth.EnableMFA)
+
+			// User Profile (Self-Service)
+			users.GET("/profile", handlers.Profile.GetProfile)
+			users.PUT("/profile", handlers.Profile.UpdateProfile)
+			users.PUT("/profile/password", handlers.Profile.ChangePassword)
+
+			// Notifications
+			users.GET("/notifications", handlers.Notification.GetNotifications)
+			users.GET("/notifications/unread-count", handlers.Notification.GetUnreadCount)
+			users.PUT("/notifications/:id/read", handlers.Notification.MarkAsRead)
+
 			// Admin only routes
 			admin := users.Group("/admin")
-			admin.Use(middleware.PolicyEngine()) // Replaces old simple RolesAllowed with complex Policy Engine
+			admin.Use(middleware.PolicyEngine())
 			{
 				admin.GET("/audit-logs", handlers.Admin.GetAuditLogs)
+				admin.GET("/analytics", handlers.Analytics.GetDashboardMetrics)
+				
+				// System Monitoring
+				admin.GET("/monitoring/health", handlers.Monitoring.GetHealth)
+				admin.GET("/monitoring/db", handlers.Monitoring.GetDBStatus)
 				
 				// User Management
 				admin.GET("/users", middleware.ValidateQueryParams([]string{"page", "perPage"}), handlers.User.GetMany)
@@ -91,6 +119,12 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 				admin.PUT("/policies/:id", handlers.Policy.Update)
 				admin.DELETE("/policies/:id", handlers.Policy.Delete)
 
+				// Proxy Routes Management
+				admin.GET("/proxy-routes", handlers.Proxy.GetAllRoutes)
+				admin.POST("/proxy-routes", handlers.Proxy.CreateRoute)
+				admin.PUT("/proxy-routes/:id", handlers.Proxy.UpdateRoute)
+				admin.DELETE("/proxy-routes/:id", handlers.Proxy.DeleteRoute)
+
 				// Device Management
 				admin.GET("/devices", handlers.Device.GetAllDevices)
 				admin.PUT("/devices/:mac/approve", handlers.Device.ApproveDevice)
@@ -103,6 +137,10 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 			// User Devices
 			users.POST("/devices", handlers.Device.RegisterDevice)
 			users.GET("/devices", handlers.Device.GetMyDevices)
+			
+			// Portal & Proxy
+			users.GET("/portal/apps", handlers.Proxy.GetPortalApps)
+			users.Any("/proxy/*target_path", handlers.Proxy.ReverseProxy)
 		}
 	}
 }

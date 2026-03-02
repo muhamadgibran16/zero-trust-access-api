@@ -232,3 +232,47 @@ func (h *Handler) EnableMFA(c *gin.Context) {
 	
 	response.Success(c, "MFA successfully enabled", nil)
 }
+
+// ForgotPasswordRequest represents the forgot password request body
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// ForgotPassword handles POST /auth/forgot-password
+func (h *Handler) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+
+	if err := h.service.RequestPasswordReset(req.Email); err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+
+	// Always return success to avoid email enumeration
+	response.Success(c, "If an account with that email exists, a password reset link has been sent.", nil)
+}
+
+// ResetPasswordRequest represents the reset password request body
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required,min=6"`
+}
+
+// ResetPassword handles POST /auth/reset-password
+func (h *Handler) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+
+	if err := h.service.ResetPassword(req.Token, req.NewPassword); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, "Password has been reset successfully. You can now log in.", nil)
+}

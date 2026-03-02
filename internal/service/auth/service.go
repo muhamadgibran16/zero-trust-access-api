@@ -2,12 +2,17 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/gibran/go-gin-boilerplate/config"
+	"github.com/gibran/go-gin-boilerplate/database"
 	"github.com/gibran/go-gin-boilerplate/internal/model"
 	repository "github.com/gibran/go-gin-boilerplate/internal/repository/user"
 	"github.com/gibran/go-gin-boilerplate/pkg/security"
@@ -319,4 +324,73 @@ func (s *AuthService) EnableMFA(userIDStr, code string) error {
 
 	user.MFAEnabled = true
 	return s.repo.Update(user)
+}
+
+// RequestPasswordReset generates a reset token and logs it (simulated email)
+func (s *AuthService) RequestPasswordReset(email string) error {
+	user, err := s.repo.FindByEmail(email)
+	if err != nil {
+		// Don't reveal whether the email exists
+		return nil
+	}
+
+	// Generate secure random token
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return errors.New("failed to generate reset token")
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	resetRecord := &model.PasswordReset{
+		UserID:    user.ID,
+		Token:     token,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+
+	if err := database.DB.Create(resetRecord).Error; err != nil {
+		return errors.New("failed to create reset record")
+	}
+
+	// In production, send email. In dev, log to console.
+	resetURL := fmt.Sprintf("http://localhost:3000/reset-password?token=%s", token)
+	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Printf("📧 PASSWORD RESET REQUEST for %s", email)
+	log.Printf("🔗 Reset URL: %s", resetURL)
+	log.Printf("⏰ Expires: %s", resetRecord.ExpiresAt.Format(time.RFC3339))
+	log.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+	return nil
+}
+
+// ResetPassword validates the token and sets a new password
+func (s *AuthService) ResetPassword(token, newPassword string) error {
+	var resetRecord model.PasswordReset
+	if err := database.DB.Where("token = ? AND used = false", token).First(&resetRecord).Error; err != nil {
+		return errors.New("invalid or expired reset token")
+	}
+
+	if time.Now().After(resetRecord.ExpiresAt) {
+		return errors.New("reset token has expired")
+	}
+
+	user, err := s.repo.FindByID(resetRecord.UserID)
+	if err != nil {
+		return errors.New("user not found")
+	}
+
+	hashed, err := security.HashPassword(newPassword)
+	if err != nil {
+		return errors.New("failed to hash new password")
+	}
+
+	user.Password = hashed
+	if err := s.repo.Update(user); err != nil {
+		return errors.New("failed to update password")
+	}
+
+	// Mark token as used
+	resetRecord.Used = true
+	database.DB.Save(&resetRecord)
+
+	return nil
 }

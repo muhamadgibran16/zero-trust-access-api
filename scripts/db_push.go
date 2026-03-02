@@ -22,6 +22,9 @@ func main() {
 		&model.AuditLog{},
 		&model.PolicyRule{},
 		&model.Device{},
+		&model.Notification{},
+		&model.PasswordReset{},
+		&model.AppRoute{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)

@@ -12,7 +12,7 @@ func CORS() gin.HandlerFunc {
 	config := cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Device-Os", "X-Device-Secure", "X-Device-Rooted", "X-Tunnel-Secret", "X-IAP-Token"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID", "X-Device-Os", "X-Device-Secure", "X-Device-Rooted", "X-Device-MAC", "X-Device-Mac", "X-Tunnel-Secret", "X-IAP-Token"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,

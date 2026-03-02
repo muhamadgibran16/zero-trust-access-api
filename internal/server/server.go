@@ -10,22 +10,30 @@ import (
 	"time"
 
 	"github.com/gibran/go-gin-boilerplate/config"
+	"github.com/gibran/go-gin-boilerplate/database"
 	adminHandler "github.com/gibran/go-gin-boilerplate/internal/handler/admin"
+	analyticsHandler "github.com/gibran/go-gin-boilerplate/internal/handler/analytics"
 	authHandler "github.com/gibran/go-gin-boilerplate/internal/handler/auth"
-	healthHandler "github.com/gibran/go-gin-boilerplate/internal/handler/health"
-	policyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/policy"
-	userHandler "github.com/gibran/go-gin-boilerplate/internal/handler/user"
 	deviceHandler "github.com/gibran/go-gin-boilerplate/internal/handler/device"
+	healthHandler "github.com/gibran/go-gin-boilerplate/internal/handler/health"
+	monitoringHandler "github.com/gibran/go-gin-boilerplate/internal/handler/monitoring"
+	notifHandler "github.com/gibran/go-gin-boilerplate/internal/handler/notification"
+	policyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/policy"
+	profileHandler "github.com/gibran/go-gin-boilerplate/internal/handler/profile"
+	proxyHandler "github.com/gibran/go-gin-boilerplate/internal/handler/proxy"
+	userHandler "github.com/gibran/go-gin-boilerplate/internal/handler/user"
 	"github.com/gibran/go-gin-boilerplate/internal/middleware"
 	auditRepo "github.com/gibran/go-gin-boilerplate/internal/repository/audit"
+	deviceRepo "github.com/gibran/go-gin-boilerplate/internal/repository/device"
+	notifRepo "github.com/gibran/go-gin-boilerplate/internal/repository/notification"
 	policyRepo "github.com/gibran/go-gin-boilerplate/internal/repository/policy"
 	userRepo "github.com/gibran/go-gin-boilerplate/internal/repository/user"
-	deviceRepo "github.com/gibran/go-gin-boilerplate/internal/repository/device"
 	"github.com/gibran/go-gin-boilerplate/internal/routes"
 	adminSvc "github.com/gibran/go-gin-boilerplate/internal/service/audit"
 	authSvc "github.com/gibran/go-gin-boilerplate/internal/service/auth"
-	policySvc "github.com/gibran/go-gin-boilerplate/internal/service/policy"
 	deviceSvc "github.com/gibran/go-gin-boilerplate/internal/service/device"
+	notifSvc "github.com/gibran/go-gin-boilerplate/internal/service/notification"
+	policySvc "github.com/gibran/go-gin-boilerplate/internal/service/policy"
 	userSvc "github.com/gibran/go-gin-boilerplate/internal/service/user"
 
 	"github.com/gin-gonic/gin"
@@ -62,20 +70,27 @@ func New(cfg *config.Config, logger *zap.Logger, db *gorm.DB) *Server {
 	aRepo := auditRepo.NewAuditLogRepository(db)
 	pRepo := policyRepo.NewPolicyRepository(db)
 	dRepo := deviceRepo.NewDeviceRepository(db)
+	nRepo := notifRepo.NewNotificationRepository(db)
 	
 	aService := authSvc.NewAuthService(uRepo, cfg)
 	uService := userSvc.NewUserService(uRepo)
 	adminService := adminSvc.NewAuditLogService(aRepo)
 	pService := policySvc.NewPolicyService(pRepo)
 	dService := deviceSvc.NewDeviceService(dRepo)
+	nService := notifSvc.NewNotificationService(nRepo, uRepo)
 
 	handlers := &routes.Handlers{
-		Health: healthHandler.NewHandler(),
-		Auth:   authHandler.NewHandler(aService),
-		User:   userHandler.NewHandler(uService),
-		Admin:  adminHandler.NewHandler(adminService),
-		Policy: policyHandler.NewHandler(pService),
-		Device: deviceHandler.NewHandler(dService),
+		Health:       healthHandler.NewHandler(),
+		Auth:         authHandler.NewHandler(aService),
+		User:         userHandler.NewHandler(uService),
+		Admin:        adminHandler.NewHandler(adminService),
+		Policy:       policyHandler.NewHandler(pService),
+		Device:       deviceHandler.NewHandler(dService),
+		Profile:      profileHandler.NewHandler(uRepo),
+		Notification: notifHandler.NewHandler(nService),
+		Analytics:    analyticsHandler.NewHandler(database.DB),
+		Monitoring:   monitoringHandler.NewHandler(),
+		Proxy:        proxyHandler.NewHandler(),
 	}
 
 	// Setup Routes
