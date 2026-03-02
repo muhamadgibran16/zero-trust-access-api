@@ -2,7 +2,6 @@ package service
 
 import (
 	repository "github.com/gibran/go-gin-boilerplate/internal/repository/audit"
-	"github.com/gibran/go-gin-boilerplate/internal/model"
 )
 
 // AuditLogService handles business logic for audit logs
@@ -16,7 +15,7 @@ func NewAuditLogService(repo *repository.AuditLogRepository) *AuditLogService {
 }
 
 // GetAuditLogs returns a paginated list of audit logs
-func (s *AuditLogService) GetAuditLogs(page, perPage int) ([]*model.AuditLog, int64, error) {
+func (s *AuditLogService) GetAuditLogs(page, perPage int) ([]repository.AuditLogWithUser, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -28,3 +27,4 @@ func (s *AuditLogService) GetAuditLogs(page, perPage int) ([]*model.AuditLog, in
 
 	return s.repo.FindAll(offset, perPage)
 }
+

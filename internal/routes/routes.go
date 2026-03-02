@@ -77,7 +77,7 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 		users := v1.Group("/users")
 		users.Use(middleware.IdentityAwareProxy(jwtSecret))
 		users.Use(middleware.RiskEngine())
-		users.Use(middleware.DevicePosture())
+		users.Use(middleware.DevicePosture(jwtSecret))
 		users.Use(middleware.AuditLog(logger))
 		
 		{
@@ -136,6 +136,7 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 			
 			// User Devices
 			users.POST("/devices", handlers.Device.RegisterDevice)
+			users.POST("/devices/token", handlers.Device.GetDeviceToken)
 			users.GET("/devices", handlers.Device.GetMyDevices)
 			
 			// Portal & Proxy

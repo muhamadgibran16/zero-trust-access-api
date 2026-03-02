@@ -3,10 +3,14 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/gibran/go-gin-boilerplate/database"
+	"github.com/gibran/go-gin-boilerplate/internal/model"
 	service "github.com/gibran/go-gin-boilerplate/internal/service/auth"
 	"github.com/gibran/go-gin-boilerplate/pkg/response"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // Handler handles authentication requests
@@ -17,6 +21,24 @@ type Handler struct {
 // NewHandler creates a new Auth Handler
 func NewHandler(s *service.AuthService) *Handler {
 	return &Handler{service: s}
+}
+
+func setCookies(c *gin.Context, accessToken string, refreshToken string) {
+	// For production, SameSite=Lax or Strict is often better if frontend and backend share a domain.
+	// We'll use Lax here, and secure=false for HTTP localhost compatibility.
+	c.SetSameSite(http.SameSiteLaxMode)
+	if accessToken != "" {
+		c.SetCookie("access_token", accessToken, 3600*24, "/", "", false, true)
+	}
+	if refreshToken != "" {
+		c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", "", false, true)
+	}
+}
+
+func clearCookies(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("access_token", "", -1, "/", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
 }
 
 // Register handles POST /auth/register
@@ -69,7 +91,14 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, "Login MFA Required", res)
+	if !res.NeedsMFA {
+		setCookies(c, res.AccessToken, res.RefreshToken)
+		res.AccessToken = ""
+		res.RefreshToken = ""
+		response.Success(c, "Login successful", res)
+	} else {
+		response.Success(c, "Login MFA Required", res)
+	}
 }
 
 // VerifyMFA handles POST /auth/verify-mfa
@@ -94,6 +123,10 @@ func (h *Handler) VerifyMFA(c *gin.Context) {
 		response.Unauthorized(c, err.Error())
 		return
 	}
+
+	setCookies(c, res.AccessToken, res.RefreshToken)
+	res.AccessToken = ""
+	res.RefreshToken = ""
 
 	response.Success(c, "MFA Verification successful", res)
 }
@@ -131,42 +164,35 @@ func (h *Handler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// For an API layer, you wouldn't return JSON directly after an OAuth redirect if a frontend web app is attached
-	// Redirect the user to `http://localhost:3000/auth/callback?access_token=abc&refresh_token=xyz`
-	frontendURL := fmt.Sprintf("http://localhost:3000/auth/callback?access_token=%s&refresh_token=%s", res.AccessToken, res.RefreshToken)
+	setCookies(c, res.AccessToken, res.RefreshToken)
+	frontendURL := "http://localhost:3000/auth/callback"
 	c.Redirect(http.StatusTemporaryRedirect, frontendURL)
-}
-
-type RefreshRequest struct {
-	RefreshToken string `json:"refreshToken" binding:"required"`
 }
 
 // Refresh handles POST /auth/refresh
 // @Summary Refresh access token
-// @Description Get a new access token using a refresh token
+// @Description Get a new access token using a refresh token from cookie
 // @Tags auth
-// @Accept json
 // @Produce json
-// @Param request body RefreshRequest true "Refresh token"
-// @Success 200 {object} response.Response{data=map[string]string}
+// @Success 200 {object} response.Response
 // @Failure 401 {object} response.ErrorResponse
 // @Router /auth/refresh [post]
 func (h *Handler) Refresh(c *gin.Context) {
-	var req RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.ValidationError(c, err)
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		response.Unauthorized(c, "Refresh token is missing")
 		return
 	}
 
-	accessToken, err := h.service.RefreshToken(req.RefreshToken)
+	accessToken, err := h.service.RefreshToken(refreshToken)
 	if err != nil {
 		response.Unauthorized(c, err.Error())
 		return
 	}
 
-	response.Success(c, "Token refreshed successfully", gin.H{
-		"accessToken": accessToken,
-	})
+	setCookies(c, accessToken, "")
+
+	response.Success(c, "Token refreshed successfully", nil)
 }
 
 // Logout handles POST /auth/logout
@@ -178,8 +204,22 @@ func (h *Handler) Refresh(c *gin.Context) {
 // @Security BearerAuth
 // @Router /auth/logout [post]
 func (h *Handler) Logout(c *gin.Context) {
-	// In a stateless JWT setup, logout is usually handled by the client 
-	// (deleting the token). For more security, one could blacklist tokens.
+	// Blacklist the current token
+	jti, existsJti := c.Get("jti")
+	exp, existsExp := c.Get("token_exp")
+	userID, existsUser := c.Get("userID")
+
+	if existsJti && existsExp && existsUser {
+		blacklistEntry := model.TokenBlacklist{
+			TokenID:   jti.(string),
+			UserID:    userID.(uuid.UUID),
+			ExpiresAt: exp.(time.Time),
+			CreatedAt: time.Now(),
+		}
+		database.DB.Create(&blacklistEntry)
+	}
+
+	clearCookies(c)
 	response.Success(c, "Logged out successfully", nil)
 }
 

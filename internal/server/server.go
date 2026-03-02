@@ -76,7 +76,7 @@ func New(cfg *config.Config, logger *zap.Logger, db *gorm.DB) *Server {
 	uService := userSvc.NewUserService(uRepo)
 	adminService := adminSvc.NewAuditLogService(aRepo)
 	pService := policySvc.NewPolicyService(pRepo)
-	dService := deviceSvc.NewDeviceService(dRepo)
+	dService := deviceSvc.NewDeviceService(dRepo, cfg)
 	nService := notifSvc.NewNotificationService(nRepo, uRepo)
 
 	handlers := &routes.Handlers{

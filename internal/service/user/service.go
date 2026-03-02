@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -74,10 +73,12 @@ func (s *UserService) RevokeSessions(id uuid.UUID) error {
 		return errors.New("user not found")
 	}
 	
-	if database.RedisClient != nil {
-		// Set a revocation flag spanning max JWT lifetime (e.g. 7 days)
-		return database.RedisClient.Set(context.Background(), "revoke_user:"+id.String(), "true", 7*24*time.Hour).Err()
+	blacklistEntry := model.TokenBlacklist{
+		UserID:    id,
+		TokenID:   "", // Empty means revoke ALL tokens for this user created before now
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour), // Max JWT lifetime
+		CreatedAt: time.Now(),
 	}
-	
-	return errors.New("redis is not configured for session revocation")
+
+	return database.DB.Create(&blacklistEntry).Error
 }

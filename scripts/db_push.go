@@ -25,6 +25,7 @@ func main() {
 		&model.Notification{},
 		&model.PasswordReset{},
 		&model.AppRoute{},
+		&model.TokenBlacklist{},
 	)
 	if err != nil {
 		log.Fatalf("Failed to auto-migrate database: %v", err)
