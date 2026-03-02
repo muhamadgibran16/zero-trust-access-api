@@ -31,13 +31,15 @@ func (h *Handler) RegisterDevice(c *gin.Context) {
 		return
 	}
 
+	roleStr, _ := c.Get("role")
+
 	var req service.RegisterDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ValidationError(c, err)
 		return
 	}
 
-	device, err := h.service.RegisterDevice(userID, req)
+	device, err := h.service.RegisterDevice(userID, roleStr.(string), req)
 	if err != nil {
 		response.InternalServerError(c, err.Error())
 		return
@@ -91,4 +93,34 @@ func (h *Handler) RejectDevice(c *gin.Context) {
 		return
 	}
 	response.Success(c, "Device rejected successfully", nil)
+}
+
+type GetDeviceTokenRequest struct {
+	MacAddress string `json:"macAddress" binding:"required"`
+}
+
+// GetDeviceToken handles POST /users/devices/token
+func (h *Handler) GetDeviceToken(c *gin.Context) {
+	var req GetDeviceTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ValidationError(c, err)
+		return
+	}
+
+	userIDStr, _ := c.Get("userID")
+	userID, err := uuid.Parse(userIDStr.(uuid.UUID).String())
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	token, err := h.service.GetDeviceToken(userID, req.MacAddress)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	response.Success(c, "Device token issued successfully", gin.H{
+		"deviceToken": token,
+	})
 }

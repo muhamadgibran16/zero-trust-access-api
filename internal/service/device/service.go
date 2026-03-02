@@ -3,19 +3,22 @@ package device
 import (
 	"errors"
 
+	"github.com/gibran/go-gin-boilerplate/config"
 	"github.com/gibran/go-gin-boilerplate/internal/model"
 	repository "github.com/gibran/go-gin-boilerplate/internal/repository/device"
+	"github.com/gibran/go-gin-boilerplate/pkg/security"
 	"github.com/google/uuid"
 )
 
 // DeviceService handles MDM logic
 type DeviceService struct {
-	repo *repository.DeviceRepository
+	repo   *repository.DeviceRepository
+	config *config.Config
 }
 
 // NewDeviceService creates a new DeviceService
-func NewDeviceService(repo *repository.DeviceRepository) *DeviceService {
-	return &DeviceService{repo: repo}
+func NewDeviceService(repo *repository.DeviceRepository, cfg *config.Config) *DeviceService {
+	return &DeviceService{repo: repo, config: cfg}
 }
 
 type RegisterDeviceRequest struct {
@@ -24,7 +27,7 @@ type RegisterDeviceRequest struct {
 }
 
 // RegisterDevice registers a new device pending admin approval
-func (s *DeviceService) RegisterDevice(userID uuid.UUID, req RegisterDeviceRequest) (*model.Device, error) {
+func (s *DeviceService) RegisterDevice(userID uuid.UUID, role string, req RegisterDeviceRequest) (*model.Device, error) {
 	// Check if already registered
 	existing, _ := s.repo.FindByMAC(req.MacAddress)
 	if existing != nil {
@@ -38,7 +41,7 @@ func (s *DeviceService) RegisterDevice(userID uuid.UUID, req RegisterDeviceReque
 		UserID:     userID,
 		MacAddress: req.MacAddress,
 		Name:       req.Name,
-		IsApproved: false, // Default to false in Zero Trust
+		IsApproved: role == "admin", // Auto-approve if admin
 	}
 
 	err := s.repo.Create(device)
@@ -75,4 +78,28 @@ func (s *DeviceService) RejectDevice(mac string) error {
 
 	device.IsApproved = false
 	return s.repo.Update(device)
+}
+
+// GetDeviceToken generates a cryptographic JWT for an approved device
+func (s *DeviceService) GetDeviceToken(userID uuid.UUID, macAddress string) (string, error) {
+	device, err := s.repo.FindByMAC(macAddress)
+	if err != nil {
+		return "", errors.New("device not registered")
+	}
+
+	if device.UserID != userID {
+		return "", errors.New("device does not belong to the current user")
+	}
+
+	if !device.IsApproved {
+		return "", errors.New("device is pending IT approval")
+	}
+
+	// Generate the token
+	token, err := security.GenerateDeviceToken(device.ID.String(), device.MacAddress, device.CertThumb, s.config.JWTSecret)
+	if err != nil {
+		return "", errors.New("failed to generate device identity token")
+	}
+
+	return token, nil
 }
