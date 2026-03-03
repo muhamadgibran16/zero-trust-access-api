@@ -139,9 +139,14 @@ func Setup(r *gin.Engine, handlers *Handlers, jwtSecret string, logger *zap.Logg
 			users.POST("/devices/token", handlers.Device.GetDeviceToken)
 			users.GET("/devices", handlers.Device.GetMyDevices)
 			
-			// Portal & Proxy
-			users.GET("/portal/apps", handlers.Proxy.GetPortalApps)
-			users.Any("/proxy/*target_path", handlers.Proxy.ReverseProxy)
+			// Portal & Proxy (protected by PolicyEngine for external app access control)
+		users.GET("/portal/apps", handlers.Proxy.GetPortalApps)
+
+		proxyGroup := users.Group("/proxy")
+		proxyGroup.Use(middleware.PolicyEngine())
+		{
+			proxyGroup.Any("/*target_path", handlers.Proxy.ReverseProxy)
+		}
 		}
 	}
 }

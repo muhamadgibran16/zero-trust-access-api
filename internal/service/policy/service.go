@@ -17,17 +17,19 @@ func NewPolicyService(repo *repository.PolicyRepository) *PolicyService {
 }
 
 type CreatePolicyRequest struct {
-	Type     string `json:"type" binding:"required,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE"`
-	Value    string `json:"value" binding:"required"`
-	Resource string `json:"resource"`
-	IsActive *bool  `json:"isActive"`
+	Type       string `json:"type" binding:"required,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE TIME_RESTRICT GEO_RESTRICT"`
+	Value      string `json:"value" binding:"required"`
+	Resource   string `json:"resource"`
+	AppRouteID string `json:"appRouteId"` // UUID string, empty = global
+	IsActive   *bool  `json:"isActive"`
 }
 
 type UpdatePolicyRequest struct {
-	Type     string `json:"type" binding:"omitempty,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE"`
-	Value    string `json:"value"`
-	Resource string `json:"resource"`
-	IsActive *bool  `json:"isActive"`
+	Type       string `json:"type" binding:"omitempty,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE TIME_RESTRICT GEO_RESTRICT"`
+	Value      string `json:"value"`
+	Resource   string `json:"resource"`
+	AppRouteID string `json:"appRouteId"`
+	IsActive   *bool  `json:"isActive"`
 }
 
 func (s *PolicyService) CreatePolicy(req CreatePolicyRequest) (*model.PolicyRule, error) {
@@ -42,8 +44,30 @@ func (s *PolicyService) CreatePolicy(req CreatePolicyRequest) (*model.PolicyRule
 		Resource: req.Resource,
 		IsActive: isActive,
 	}
+
+	// Link to specific AppRoute if provided
+	if req.AppRouteID != "" {
+		appRouteUUID, err := uuid.Parse(req.AppRouteID)
+		if err != nil {
+			return nil, errors.New("invalid app route ID")
+		}
+		policy.AppRouteID = &appRouteUUID
+	}
+
 	err := s.repo.Create(policy)
-	return policy, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Preload the AppRoute relation for response
+	if policy.AppRouteID != nil {
+		loaded, _ := s.repo.FindByID(policy.ID)
+		if loaded != nil {
+			return loaded, nil
+		}
+	}
+
+	return policy, nil
 }
 
 func (s *PolicyService) GetAllPolicies() ([]model.PolicyRule, error) {
@@ -62,9 +86,20 @@ func (s *PolicyService) UpdatePolicy(id uuid.UUID, req UpdatePolicyRequest) (*mo
 	if req.Value != "" {
 		policy.Value = req.Value
 	}
-	if req.Resource != "" {
-		policy.Resource = req.Resource
+	// Allow clearing resource
+	policy.Resource = req.Resource
+
+	// Update AppRouteID
+	if req.AppRouteID != "" {
+		appRouteUUID, err := uuid.Parse(req.AppRouteID)
+		if err != nil {
+			return nil, errors.New("invalid app route ID")
+		}
+		policy.AppRouteID = &appRouteUUID
+	} else {
+		policy.AppRouteID = nil // Clear = global
 	}
+
 	if req.IsActive != nil {
 		policy.IsActive = *req.IsActive
 	}
@@ -76,3 +111,4 @@ func (s *PolicyService) UpdatePolicy(id uuid.UUID, req UpdatePolicyRequest) (*mo
 func (s *PolicyService) DeletePolicy(id uuid.UUID) error {
 	return s.repo.Delete(id)
 }
+
