@@ -6,17 +6,25 @@ import (
 
 // Cloaking hides internal API endpoints from unauthorized internet access.
 // Only traffic routing through correct encrypted tunnels (like Cloudflare Access or internal VPN)
-// and carrying a specific secret key is allowed.
+// OR requests carrying a valid session cookie (browser-based access via IAP) are allowed.
 func Cloaking(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for the internal secret that should only be injected by a trusted load balancer or tunnel proxy
 		tunnelSecret := c.GetHeader("X-Tunnel-Secret")
-		if tunnelSecret != secret {
-			// Do not explicitly state it's an API. Cloak by dropping connection or returning a generic resource.
-			// Returning 404 Not Found to simulate cloaking (ignoring the exact router path match).
-			c.AbortWithStatus(404)
+		if tunnelSecret == secret {
+			c.Next()
 			return
 		}
-		c.Next()
+
+		// Also allow browser requests that carry a valid access_token cookie.
+		// These are legitimate users accessing the portal via the browser.
+		if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+			c.Next()
+			return
+		}
+
+		// No valid tunnel secret or session cookie — cloak the API.
+		c.AbortWithStatus(404)
 	}
 }
+

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -71,7 +72,7 @@ func (h *Handler) ReverseProxy(c *gin.Context) {
 
 		// Forward UserID to internal app for identity context
 		if userID, exists := c.Get("userID"); exists {
-			req.Header.Set("X-ZTA-User-ID", userID.(string)) // Ensure type assumption
+			req.Header.Set("X-ZTA-User-ID", fmt.Sprintf("%v", userID))
 		}
 
 		req.Host = targetUrl.Host

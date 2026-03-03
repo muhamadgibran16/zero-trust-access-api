@@ -24,6 +24,7 @@ func DevicePosture(secret string) gin.HandlerFunc {
 			"/api/v1/users/setup-mfa",
 			"/api/v1/users/enable-mfa",
 			"/api/v1/users/portal",
+			"/api/v1/users/proxy",  // proxy routes are protected by IAP
 		}
 		for _, prefix := range exemptPrefixes {
 			if strings.HasPrefix(path, prefix) {
