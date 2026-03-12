@@ -12,8 +12,9 @@ type AppRoute struct {
 	ID          uuid.UUID      `gorm:"type:uuid;primary_key;" json:"id"`
 	Name        string         `gorm:"size:255;not null" json:"name"`
 	Description string         `gorm:"type:text" json:"description"`
-	PathPrefix  string         `gorm:"size:255;not null;uniqueIndex" json:"pathPrefix"` // e.g., "/hr-app"
-	TargetURL   string         `gorm:"size:255;not null" json:"targetUrl"`  // e.g., "http://internal-hr.local:8080"
+	PathPrefix  string         `gorm:"size:255;not null;uniqueIndex" json:"pathPrefix"`
+	TargetURL   string         `gorm:"size:255;not null" json:"targetUrl"`
+	ProxySecret string         `gorm:"size:255" json:"proxySecret"` // Shared secret injected as X-Proxy-Secret header
 	Icon        string         `gorm:"size:255" json:"icon"` 
 	IsActive    bool           `gorm:"default:true" json:"isActive"`
 	CreatedAt   time.Time      `json:"createdAt"`

@@ -12,6 +12,7 @@ import (
 	"github.com/gibran/go-gin-boilerplate/internal/model"
 	"github.com/gibran/go-gin-boilerplate/pkg/response"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct{}
@@ -69,6 +70,11 @@ func (h *Handler) ReverseProxy(c *gin.Context) {
 	proxy.Director = func(req *http.Request) {
 		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 		req.Header.Set("X-ZTA-Authenticated", "true")
+
+		// Inject shared secret so target app can verify requests come from FortiGateX
+		if appRoute.ProxySecret != "" {
+			req.Header.Set("X-Proxy-Secret", appRoute.ProxySecret)
+		}
 
 		// Forward UserID to internal app for identity context
 		if userID, exists := c.Get("userID"); exists {
@@ -129,6 +135,7 @@ func (h *Handler) CreateRoute(c *gin.Context) {
 		Description: req.Description,
 		PathPrefix:  req.PathPrefix,
 		TargetURL:   req.TargetURL,
+		ProxySecret: strings.ReplaceAll(uuid.New().String(), "-", ""),
 		Icon:        req.Icon,
 		IsActive:    req.IsActive,
 	}
