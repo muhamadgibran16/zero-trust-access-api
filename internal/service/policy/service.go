@@ -25,11 +25,11 @@ type CreatePolicyRequest struct {
 }
 
 type UpdatePolicyRequest struct {
-	Type       string `json:"type" binding:"omitempty,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE TIME_RESTRICT GEO_RESTRICT"`
-	Value      string `json:"value"`
-	Resource   string `json:"resource"`
-	AppRouteID string `json:"appRouteId"`
-	IsActive   *bool  `json:"isActive"`
+	Type       string  `json:"type" binding:"omitempty,oneof=DENY_IP ALLOW_IP REQUIRE_ROLE TIME_RESTRICT GEO_RESTRICT"`
+	Value      string  `json:"value"`
+	Resource   string  `json:"resource"`
+	AppRouteID *string `json:"appRouteId"`
+	IsActive   *bool   `json:"isActive"`
 }
 
 func (s *PolicyService) CreatePolicy(req CreatePolicyRequest) (*model.PolicyRule, error) {
@@ -90,14 +90,18 @@ func (s *PolicyService) UpdatePolicy(id uuid.UUID, req UpdatePolicyRequest) (*mo
 	policy.Resource = req.Resource
 
 	// Update AppRouteID
-	if req.AppRouteID != "" {
-		appRouteUUID, err := uuid.Parse(req.AppRouteID)
-		if err != nil {
-			return nil, errors.New("invalid app route ID")
+	if req.AppRouteID != nil {
+		if *req.AppRouteID != "" {
+			appRouteUUID, err := uuid.Parse(*req.AppRouteID)
+			if err != nil {
+				return nil, errors.New("invalid app route ID")
+			}
+			policy.AppRouteID = &appRouteUUID
+		} else {
+			policy.AppRouteID = nil // Clear = global
 		}
-		policy.AppRouteID = &appRouteUUID
-	} else {
-		policy.AppRouteID = nil // Clear = global
+		// Clear preloaded association so GORM doesn't conflict during save
+		policy.AppRoute = nil
 	}
 
 	if req.IsActive != nil {

@@ -34,7 +34,15 @@ func (r *PolicyRepository) FindByID(id uuid.UUID) (*model.PolicyRule, error) {
 }
 
 func (r *PolicyRepository) Update(policy *model.PolicyRule) error {
-	return r.db.Save(policy).Error
+	return r.db.Model(policy).
+		Select("type", "value", "resource", "app_route_id", "is_active", "updated_at").
+		Updates(map[string]interface{}{
+			"type":        policy.Type,
+			"value":       policy.Value,
+			"resource":    policy.Resource,
+			"app_route_id": policy.AppRouteID,
+			"is_active":   policy.IsActive,
+		}).Error
 }
 
 func (r *PolicyRepository) Delete(id uuid.UUID) error {
